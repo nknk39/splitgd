@@ -1,0 +1,122 @@
+extends Node2D
+
+var piece_size
+var is_split = {}
+
+# Called when the node enters the scene tree for the first time.
+func _ready():
+	self.connect("body_entered", Callable(self, "_on_body_entered"))
+	var timer = Timer.new()
+	timer.wait_time = 1
+	timer.one_shot = true
+	timer.autostart = true
+	timer.connect("timeout", Callable(self, "_on_timer_timeout"))
+	self.add_child(timer)
+
+# Called every frame. 'delta' is the elapsed time since the previous frame.
+func _process(delta):
+	pass
+
+func _on_alphaball_body_entered(body):  
+	print("Signal received")
+	print("Collided with: ", body.name)
+
+	# Reset is_split for this body
+	is_split[body.name] = false
+
+	if !is_split[body.name]:
+		perform_split(body)
+
+func perform_split(body):
+	# Check if the body's name ends with '_Cube' or includes 'Cube'
+	if body.name.ends_with('_Cube') or "Cube" in body.name:
+		return
+
+	var collision_shape_node = body.get_node(body.name + '_CollisionShape2D')
+
+	if collision_shape_node != null and collision_shape_node is CollisionShape2D and collision_shape_node.shape is RectangleShape2D:
+		# Get the size of the collision shape
+		var collision_shape_width = collision_shape_node.shape.extents.x * 2
+		var collision_shape_height = collision_shape_node.shape.extents.y * 2
+
+		# If the collision shape size is less or equal to 6x6, don't split it
+		if collision_shape_width <= 6 and collision_shape_height <= 6:
+			# Create a single cube instance of it
+			var cube = RigidBody2D.new()
+			cube.name = body.name + 'Cube'
+			var shape = CollisionShape2D.new()
+			shape.shape = RectangleShape2D.new()
+			shape.shape.extents = Vector2(collision_shape_width / 2, collision_shape_height / 2)
+			cube.add_child(shape)
+			
+			# Assign the texture to the cube
+			var sprite = Sprite2D.new()
+			sprite.texture = body.get_node(body.name + '_Sprite').texture
+			sprite.region_enabled = true
+			sprite.region_rect = Rect2(0, 0, collision_shape_width, collision_shape_height)
+			cube.add_child(sprite)
+			
+			# Add the cube to the parent of the body
+			body.get_parent().add_child(cube)
+			
+			# Set the global position of the cube
+			cube.global_position = body.global_position
+			
+			# If "Stone" is in the name of the original body, enable continuous collision detection
+			cube.continuous_cd = true
+			
+			# Queue the original body for deletion
+			body.queue_free()
+			
+			# Set is_split to true
+			is_split[body.name] = true
+			return
+
+		# Generate random width and height for the piece_size
+		var piece_width = randi() % 16 + 16 # Ensures that the width is between 16 and 25
+		var piece_height = randi() % 16 + 16 # Ensures that the height is between 16 and 25
+		piece_size = Vector2(piece_width, piece_height)
+		
+		# Calculate the number of cubes
+		var num_cubes_width = int(collision_shape_width / piece_size.x)
+		var num_cubes_height = int(collision_shape_height / piece_size.y)
+		
+		# Initialize a counter for the cubes
+		var cube_counter = 0
+		
+		# Create the cubes
+		for i in range(num_cubes_width):
+			for j in range(num_cubes_height):
+				var cube = RigidBody2D.new()
+				cube.name = body.name + 'Cube' + str(cube_counter)
+				var shape = CollisionShape2D.new()
+				shape.shape = RectangleShape2D.new()
+				shape.shape.extents = piece_size / 2
+				cube.add_child(shape)
+				
+				# Assign the texture to the cube
+				var sprite = Sprite2D.new()
+				sprite.texture = body.get_node(body.name + '_Sprite').texture
+				sprite.region_enabled = true
+				sprite.region_rect = Rect2(i * piece_size.x, j * piece_size.y, piece_size.x, piece_size.y)
+				cube.add_child(sprite)
+				
+				# Add the cube to the parent of the body
+				body.get_parent().add_child(cube)
+				
+				# Set the global position of the cube
+				cube.global_position = body.global_position + Vector2(i * piece_size.x, j * piece_size.y)
+				
+				# Increment the cube counter
+				cube_counter += 1
+				
+		# Queue the original body for deletion
+		body.queue_free()
+		
+		# Set is_split to true
+		is_split[body.name] = true
+
+func _on_timer_timeout():
+	for child in get_children():
+		if child.name.ends_with('_Cube'):
+			child.linear_velocity = Vector2.ZERO
